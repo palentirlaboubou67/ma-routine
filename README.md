@@ -3,7 +3,21 @@
 Une checklist quotidienne simple et bienveillante, pensée pour le TDAH :
 on ouvre, on voit ce qu'il reste à faire, on coche, on voit sa progression.
 
-## Lancer l'application
+## En ligne (téléphone et ordinateur)
+
+**https://palentirlaboubou67.github.io/ma-routine/**
+
+- **Android (Chrome)** : ouvrir le lien → menu ⋮ → « Ajouter à l'écran d'accueil » / « Installer l'application ».
+- **iPhone (Safari)** : ouvrir le lien → bouton Partager → « Sur l'écran d'accueil ».
+
+Une fois installée, l'app s'ouvre en plein écran et fonctionne hors ligne.
+Chaque appareil garde ses propres données (pas de synchronisation) : pour transférer
+son historique, Réglages → Exporter sur l'un, puis Restaurer sur l'autre.
+
+Toute modification poussée sur la branche `main` est mise en ligne automatiquement
+(GitHub Pages) et récupérée par l'app à sa prochaine ouverture avec du réseau.
+
+## Lancer l'application en local
 
 Double-clique sur **`lancer.bat`**. Le navigateur s'ouvre sur `http://localhost:5317/`.
 
