@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Ta routine du jour, simple et bienveillante.">
+  <meta name="theme-color" content="#f5f4f0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#141618" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Ma routine">
+  <title>Ma routine</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app" class="app" aria-busy="true"></div>
+  <noscript>
+    <p class="app">Cette application a besoin de JavaScript pour fonctionner.</p>
+  </noscript>
+  <script>
+    // Ouverte en double-cliquant sur le fichier, l'app ne peut pas charger ses modules.
+    if (location.protocol === 'file:') {
+      document.getElementById('app').innerHTML =
+        '<div class="card empty fatal"><p class="empty-title">Lance l’application avec « lancer.bat »</p>' +
+        '<p class="empty-text">Double-clique sur le fichier lancer.bat du dossier : l’application s’ouvrira dans ton navigateur.</p></div>';
+    }
+  </script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
