@@ -3,9 +3,10 @@
 
 import { addDays, dateKey, formatPastDay, isDateKey, msUntilNextDay } from '../src/date.js';
 import {
-  buildExport, createDay, makeDefaultTasks, moveTask, progressOf, sanitizeImport, syncDay, toggleItem,
+  buildExport, createDay, makeDefaultTasks, makeTask, moveTask, progressOf, sanitizeImport, syncDay, toggleItem,
 } from '../src/model.js';
 import { MIGRATIONS, runMigrations } from '../src/migrations.js';
+import { computeStats, currentStreak } from '../src/stats.js';
 import { createMemoryRepository } from '../src/storage.js';
 import { createStore } from '../src/store.js';
 
@@ -316,6 +317,61 @@ test('réordonner reste dans le même moment', async () => {
   equal(matin.at(-2).id, lastMatin.id);
   store.setTaskMoment(lastMatin.id, 'soir');
   equal(store.getState().tasks.at(-1).id, lastMatin.id, 'changer de moment place la tâche à la fin');
+});
+
+// ----- Tableau de bord -----
+
+// Trois tâches créées le 18 ; une quatrième ajoutée le 22.
+function statsFixture() {
+  const t = (title, moment, createdAt) => ({ ...makeTask({ title, moment }, createdAt), moment });
+  const tasks = [
+    t('Pompes', 'matin', '2026-10-18T08:00:00'),
+    t('Dents midi', 'midi', '2026-10-18T08:00:00'),
+    t('Dents soir', 'soir', '2026-10-18T08:00:00'),
+  ];
+  const day = (date, done, list = tasks) => {
+    let d = createDay(date, list);
+    for (const i of done) d = toggleItem(d, list[i].id);
+    return d;
+  };
+  const days = new Map();
+  days.set('2026-10-19', day('2026-10-19', [0, 1, 2]));
+  days.set('2026-10-20', day('2026-10-20', [0, 1, 2]));
+  // le 21 : app non ouverte
+  const late = t('Pas d’alcool', 'soir', '2026-10-22T09:00:00');
+  const all = [...tasks, late];
+  days.set('2026-10-22', day('2026-10-22', [0, 3], all));
+  return { tasks: all, days, today: '2026-10-22' };
+}
+
+test('bilan : jour non ouvert = 0 %, période depuis le premier jour', () => {
+  const stats = computeStats(statsFixture(), 7);
+  equal(stats.days.map((d) => d.date), ['2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22']);
+  equal(stats.days.map((d) => d.percent), [100, 100, 0, 50]);
+  assert(!stats.days[2].opened);
+  equal(stats.days[2].total, 3, 'le 21, l’activité ajoutée le 22 n’est pas attendue');
+  equal(stats.average, 63);
+});
+
+test('bilan : par moment et par activité', () => {
+  const stats = computeStats(statsFixture(), 30);
+  const byTitle = Object.fromEntries(stats.activities.map((a) => [a.title, [a.done, a.total, a.percent]]));
+  equal(byTitle.Pompes, [3, 4, 75]);
+  equal(byTitle['Dents midi'], [2, 4, 50]);
+  equal(byTitle['Pas d’alcool'], [1, 1, 100], 'compté seulement depuis son ajout');
+  equal(stats.moments.map((m) => [m.id, m.percent]), [['matin', 75], ['midi', 50], ['soir', 60]]);
+});
+
+test('bilan : série de jours à 100 %', () => {
+  const f = statsFixture();
+  equal(currentStreak(f), { streak: 0, includesToday: false }, 'le 21 non ouvert casse la série');
+  f.days.set('2026-10-21', createDay('2026-10-21', f.tasks.slice(0, 3)).items.reduce(
+    (d, item) => toggleItem(d, item.taskId), createDay('2026-10-21', f.tasks.slice(0, 3))));
+  equal(currentStreak(f), { streak: 3, includesToday: false }, 'aujourd’hui en cours ne casse pas la série');
+  let today = f.days.get('2026-10-22');
+  for (const item of today.items) if (!item.done) today = toggleItem(today, item.taskId);
+  f.days.set('2026-10-22', today);
+  equal(currentStreak(f), { streak: 4, includesToday: true });
 });
 
 // ----- Lancement -----

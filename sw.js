@@ -3,7 +3,7 @@
 // version la plus récente est servie quand elle est disponible, sinon la copie
 // en cache.
 
-const CACHE = 'ma-routine-v2';
+const CACHE = 'ma-routine-v3';
 const SHELL = [
   './',
   './index.html',
@@ -16,9 +16,11 @@ const SHELL = [
   './src/date.js',
   './src/model.js',
   './src/migrations.js',
+  './src/stats.js',
   './src/storage.js',
   './src/store.js',
   './src/ui/app.js',
+  './src/ui/dashboard.js',
   './src/ui/dom.js',
   './src/ui/feedback.js',
   './src/ui/history.js',
@@ -43,7 +45,9 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
   event.respondWith(
-    fetch(request)
+    // `no-cache` : toujours revalider auprès du serveur, pour ne jamais mélanger
+    // des fichiers de deux versions différentes de l'app.
+    fetch(request, { cache: 'no-cache' })
       .then((response) => {
         if (response.ok) {
           const copy = response.clone();

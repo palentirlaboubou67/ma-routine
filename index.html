@@ -28,6 +28,16 @@
         '<div class="card empty fatal"><p class="empty-title">Lance l’application avec « lancer.bat »</p>' +
         '<p class="empty-text">Double-clique sur le fichier lancer.bat du dossier : l’application s’ouvrira dans ton navigateur.</p></div>';
     }
+    // Filet de sécurité : si l'app n'a pas démarré (fichier manquant pendant une
+    // mise à jour, par exemple), on propose de recharger.
+    setTimeout(function () {
+      var app = document.getElementById('app');
+      if (app.hasAttribute('aria-busy') && !app.firstElementChild) {
+        app.innerHTML = '<div class="card empty fatal"><p class="empty-title">L’application n’a pas pu démarrer</p>' +
+          '<p class="empty-text">Tes données sont intactes. Recharge la page pour récupérer la dernière version.</p>' +
+          '<button class="btn btn-primary" type="button" onclick="location.reload()">Recharger</button></div>';
+      }
+    }, 6000);
   </script>
   <script type="module" src="src/main.js"></script>
 </body>

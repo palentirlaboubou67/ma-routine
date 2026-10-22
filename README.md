@@ -35,6 +35,8 @@ Prérequis : Python (déjà installé sur ce PC). Aucune autre dépendance.
   Un toucher coche ou décoche. La prochaine tâche est signalée « À faire ensuite ».
   Une petite célébration apparaît quand tout est fait.
 - **Historique** : les journées passées (date, X sur Y, pourcentage, tâches faites ou non).
+- **Bilan** : aujourd'hui (fait / pas encore fait), série de jours à 100 %, régularité sur 7 ou
+  30 jours (une barre par jour), pourcentages par moment et par activité.
 - **Réglages** (icône en haut à droite) : ajouter, renommer, changer l'icône, réordonner,
   mettre en pause ou supprimer une habitude ; prénom ; exporter / restaurer une sauvegarde.
 
@@ -59,6 +61,7 @@ src/model.js               logique pure : tâches par défaut, moments, progress
 src/migrations.js          évolutions de la routine appliquées une fois aux données existantes
 src/storage.js             dépôt IndexedDB / localStorage / mémoire (interface unique)
 src/store.js               état de l'app + actions + changement de jour
+src/stats.js               statistiques du Bilan (jour non ouvert = 0 %, séries)
 src/ui/*.js                écrans (today, history, settings), icônes, dialogues
 sw.js, manifest.webmanifest  installation et usage hors ligne
 tests/                     tests : ouvrir http://localhost:5317/tests/

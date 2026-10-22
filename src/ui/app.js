@@ -3,6 +3,7 @@
 import { msUntilNextDay } from '../date.js';
 import { h } from './dom.js';
 import { toast } from './feedback.js';
+import { createDashboardView } from './dashboard.js';
 import { createHistoryView } from './history.js';
 import { icon } from './icons.js';
 import { createSettingsView } from './settings.js';
@@ -22,6 +23,7 @@ export function mountApp(root, store) {
   const views = {
     today: createTodayView(store, { openSettings }),
     history: createHistoryView(store, { openSettings }),
+    dashboard: createDashboardView(store, { openSettings }),
     settings: createSettingsView(store, { onBack }),
   };
 
@@ -30,8 +32,11 @@ export function mountApp(root, store) {
       icon('sun'), h('span', null, 'Aujourd’hui')),
     history: h('button', { class: 'tab', type: 'button', onclick: () => show('history') },
       icon('calendar'), h('span', null, 'Historique')),
+    dashboard: h('button', { class: 'tab', type: 'button', onclick: () => show('dashboard') },
+      icon('chart'), h('span', null, 'Bilan')),
   };
-  const tabbar = h('nav', { class: 'tabbar', 'aria-label': 'Navigation principale' }, tabs.today, tabs.history);
+  const tabbar = h('nav', { class: 'tabbar', 'aria-label': 'Navigation principale' },
+    tabs.today, tabs.history, tabs.dashboard);
 
   function show(name, { push = true } = {}) {
     if (current === name) {

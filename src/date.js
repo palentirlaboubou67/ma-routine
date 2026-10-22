@@ -49,6 +49,24 @@ export function formatPastDay(key, todayKey) {
   return capitalize((sameYear ? longFormat : longFormatWithYear).format(parseKey(key)));
 }
 
+const shortFormat = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+const narrowWeekday = new Intl.DateTimeFormat('fr-FR', { weekday: 'narrow' });
+
+// « mer. 22 oct. »
+export function formatShort(key) {
+  return shortFormat.format(parseKey(key));
+}
+
+// « M » (initiale du jour de la semaine)
+export function weekdayInitial(key) {
+  return narrowWeekday.format(parseKey(key)).toUpperCase();
+}
+
+// « 22/10 »
+export function formatDayMonth(key) {
+  return `${key.slice(8, 10)}/${key.slice(5, 7)}`;
+}
+
 export function greetingFor(hour) {
   if (hour >= 5 && hour < 12) return 'Bonjour';
   if (hour >= 12 && hour < 18) return 'Bon après-midi';
