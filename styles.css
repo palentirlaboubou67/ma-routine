@@ -611,11 +611,17 @@ h1, h2, p { margin: 0; }
 
 /* Lignes avec jauge (par moment, par activité). */
 .meter-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+/* Sur téléphone : titre et % sur une ligne, jauge en dessous. */
 .meter-row {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) minmax(56px, 34%) 44px;
+  grid-template-columns: 28px minmax(0, 1fr) 48px;
   align-items: center;
-  gap: 10px;
+  gap: 6px 10px;
+}
+.meter-row .meter { grid-column: 2 / 4; grid-row: 2; }
+@media (min-width: 560px) {
+  .meter-row { grid-template-columns: 28px minmax(0, 1fr) minmax(80px, 32%) 48px; }
+  .meter-row .meter { grid-column: auto; grid-row: auto; }
 }
 .meter-icon { color: var(--text-3); display: grid; place-items: center; }
 .meter-text { display: flex; flex-direction: column; min-width: 0; }

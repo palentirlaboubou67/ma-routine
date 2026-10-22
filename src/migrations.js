@@ -46,6 +46,19 @@ export const MIGRATIONS = [
       ]),
     ],
   },
+  {
+    id: '2026-10-22-toute-la-journee',
+    fallbackMoment: 'journee',
+    layout: [
+      // Les titres sont volontairement écrits tels quels (« Br » compris).
+      ...slots('journee', [
+        ['Pas de Br', 'heart'],
+        ["Pas d'alcool", 'water'],
+      ]),
+      // À la fin du soir, après les tâches déjà présentes.
+      ...slots('soir', [['Dodo avant 23 h', 'moon']], Number.MAX_SAFE_INTEGER),
+    ],
+  },
 ];
 
 const AFTER_LAYOUT = 1_000_000;

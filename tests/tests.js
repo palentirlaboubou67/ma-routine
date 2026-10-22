@@ -127,11 +127,11 @@ test('premier lancement : liste par défaut et journée créée', async () => {
   const store = createStore(repo, { now: c.now });
   await store.init();
   const s = store.getState();
-  equal(s.tasks.length, 14);
+  equal(s.tasks.length, 17);
   equal(s.today, '2026-10-21');
-  equal(s.days.get('2026-10-21').items.length, 14);
+  equal(s.days.get('2026-10-21').items.length, 17);
   const saved = await repo.loadAll();
-  assert(saved.initialized && saved.tasks.length === 14 && saved.days.length === 1, 'tout est enregistré');
+  assert(saved.initialized && saved.tasks.length === 17 && saved.days.length === 1, 'tout est enregistré');
   equal(saved.migrations, MIGRATIONS.map((m) => m.id));
 });
 
@@ -211,11 +211,11 @@ test('modifier la liste ne touche pas l’historique', async () => {
 
   const s = store.getState();
   const past = s.days.get('2026-10-21');
-  equal(past.items.length, 14);
+  equal(past.items.length, 17);
   equal(past.items[1].title, 'Me brosser les dents');
   assert(past.items[1].done);
   const today = s.days.get('2026-10-22');
-  equal(today.items.length, 13, '14 − 1 supprimée − 1 en pause + 1 ajoutée');
+  equal(today.items.length, 16, '17 − 1 supprimée − 1 en pause + 1 ajoutée');
   equal(today.items[0].title, 'Brossage des dents');
   const midi = today.items.filter((i) => i.moment === 'midi');
   equal(midi[midi.length - 1].title, 'Boire un verre d’eau', 'ajoutée à la fin de son moment');
@@ -223,7 +223,7 @@ test('modifier la liste ne touche pas l’historique', async () => {
   await new Promise((r) => setTimeout(r, 0));
   const reopened = createStore(repo, { now: c.now });
   await reopened.init();
-  equal(reopened.getState().tasks.length, 14, '13 restantes + 1 ajoutée');
+  equal(reopened.getState().tasks.length, 17, '16 restantes + 1 ajoutée');
   equal(reopened.getState().days.get('2026-10-21').items[1].title, 'Me brosser les dents');
 });
 
@@ -281,13 +281,14 @@ test('migration : sections, nouvelles activités, rien de perdu', async () => {
   equal(titles('midi'), ['Manger un repas', 'Manger au moins un fruit ou un légume', 'Me brosser les dents',
     'Faire la vaisselle — première session', 'Faire le ménage']);
   equal(titles('soir'), ['Faire mon sport de la journée', 'Faire la vaisselle — deuxième session',
-    'Me brosser les dents', 'Prendre mes médicaments']);
+    'Me brosser les dents', 'Prendre mes médicaments', 'Dodo avant 23 h']);
+  equal(titles('journee'), ['Pas de Br', "Pas d'alcool"]);
   assert(s.tasks.find((t) => t.title === 'Me brosser les dents' && t.moment === 'matin').id === legacy.tasks[1].id,
     'la brique existante devient celle du matin');
   equal(s.tasks.filter((t) => t.title === 'Me brosser les dents').length, 3);
 
   const today = s.days.get('2026-10-22');
-  equal(progressOf(today), { done: 1, total: 15, remaining: 14, percent: 7, complete: false });
+  equal(progressOf(today), { done: 1, total: 18, remaining: 17, percent: 6, complete: false });
   assert(today.items.find((i) => i.taskId === legacy.tasks[3].id).done, 'la case cochée du jour est conservée');
   equal(s.days.get('2026-10-21').items.length, 9, 'le passé ne change pas');
 
@@ -295,7 +296,30 @@ test('migration : sections, nouvelles activités, rien de perdu', async () => {
   await new Promise((r) => setTimeout(r, 0));
   const again = createStore(repo, { now: c.now });
   await again.init();
-  equal(again.getState().tasks.length, 15);
+  equal(again.getState().tasks.length, 18);
+});
+
+test('ajout « Toute la journée » : texte exact, comptées seulement à partir d’aujourd’hui', async () => {
+  // Données après l'étape 1 (sections Matin/Midi/Soir), avec un passé à 100 %.
+  const step1Tasks = runMigrations(makeDefaultTasks('2026-10-20T08:00:00'), [], '2026-10-20T08:00:00').tasks
+    .filter((t) => !['Pas de Br', "Pas d'alcool", 'Dodo avant 23 h'].includes(t.title));
+  let past = createDay('2026-10-21', step1Tasks);
+  for (const item of past.items) past = toggleItem(past, item.taskId);
+  const repo = createMemoryRepository({
+    initialized: true, migrations: [MIGRATIONS[0].id], tasks: step1Tasks, days: [past], settings: {},
+  });
+  const store = createStore(repo, { now: clock('2026-10-22T09:00:00').now });
+  await store.init();
+  const s = store.getState();
+  const titles = s.tasks.map((t) => t.title);
+  assert(titles.includes('Pas de Br') && titles.includes("Pas d'alcool") && titles.includes('Dodo avant 23 h'));
+  equal(s.tasks.find((t) => t.title === 'Dodo avant 23 h').moment, 'soir');
+  equal(s.days.get('2026-10-22').items.length, 17);
+  equal(progressOf(s.days.get('2026-10-21')).percent, 100, 'le passé reste à 100 %');
+  const stats = computeStats(s, 7);
+  equal(stats.days[0].percent, 100);
+  equal(stats.activities.find((a) => a.title === 'Pas de Br').total, 1, 'compté depuis aujourd’hui seulement');
+  equal(currentStreak(s).streak, 1, 'la série d’hier est intacte');
 });
 
 test('migration rejouée sur une sauvegarde déjà migrée : pas de doublons', () => {
@@ -316,7 +340,8 @@ test('réordonner reste dans le même moment', async () => {
   const matin = store.getState().tasks.filter((t) => t.moment === 'matin');
   equal(matin.at(-2).id, lastMatin.id);
   store.setTaskMoment(lastMatin.id, 'soir');
-  equal(store.getState().tasks.at(-1).id, lastMatin.id, 'changer de moment place la tâche à la fin');
+  equal(store.getState().tasks.filter((t) => t.moment === 'soir').at(-1).id, lastMatin.id,
+    'changer de moment place la tâche à la fin de ce moment');
 });
 
 // ----- Tableau de bord -----

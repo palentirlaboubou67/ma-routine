@@ -21,6 +21,7 @@ export const MOMENTS = [
   { id: 'matin', label: 'Matin', icon: 'sunrise' },
   { id: 'midi', label: 'Midi', icon: 'sun' },
   { id: 'soir', label: 'Soir', icon: 'moon' },
+  { id: 'journee', label: 'Toute la journée', icon: 'clock' },
 ];
 export const DEFAULT_MOMENT = MOMENTS[0].id;
 // Pour d'anciennes données sans moment.
