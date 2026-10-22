@@ -1,7 +1,7 @@
 // Écran « Historique » : les journées passées, sans jugement.
 
 import { formatPastDay } from '../date.js';
-import { progressOf, totalDone } from '../model.js';
+import { momentInfo, progressOf, totalDone } from '../model.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
 
@@ -50,6 +50,7 @@ export function createHistoryView(store, { openSettings }) {
           h('span', { class: 'day-item-mark' }, item.done ? icon('check', { size: 14 }) : null),
           h('span', { class: 'day-item-icon' }, icon(item.icon, { size: 18 })),
           h('span', { class: 'day-item-title' }, item.title),
+          item.moment ? h('span', { class: 'day-item-moment' }, momentInfo(item.moment).label) : null,
           h('span', { class: 'visually-hidden' }, item.done ? ' : faite' : ' : non cochée'),
         )),
       ),

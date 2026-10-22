@@ -1,9 +1,12 @@
 // Logique métier pure (aucun accès au DOM ni au stockage), testée dans tests/.
 //
 // Modèle de données :
-//   Task   { id, title, icon, active, order, createdAt, updatedAt }
+//   Task   { id, title, icon, moment, active, order, createdAt, updatedAt }
 //   Day    { date: 'AAAA-MM-JJ', items: DayItem[], updatedAt }
-//   DayItem{ taskId, title, icon, done, doneAt }
+//   DayItem{ taskId, title, icon, moment, done, doneAt }
+//
+// `moment` range la tâche dans une section de la journée (voir MOMENTS).
+// Les tâches sont toujours triées par moment, puis par `order`.
 //
 // Chaque journée garde une copie (titre + icône) des tâches qui étaient
 // actives ce jour-là : modifier ou supprimer une tâche n'altère jamais
@@ -12,6 +15,36 @@
 import { isDateKey } from './date.js';
 
 export const TITLE_MAX_LENGTH = 80;
+
+// Sections de la journée, dans l'ordre d'affichage.
+export const MOMENTS = [
+  { id: 'matin', label: 'Matin', icon: 'sunrise' },
+  { id: 'midi', label: 'Midi', icon: 'sun' },
+  { id: 'soir', label: 'Soir', icon: 'moon' },
+];
+export const DEFAULT_MOMENT = MOMENTS[0].id;
+// Pour d'anciennes données sans moment.
+const OTHER_MOMENT = { id: 'autre', label: 'Autres', icon: 'check' };
+
+export function momentInfo(id) {
+  return MOMENTS.find((m) => m.id === id) ?? OTHER_MOMENT;
+}
+
+export function momentIndex(id) {
+  const i = MOMENTS.findIndex((m) => m.id === id);
+  return i < 0 ? MOMENTS.length : i;
+}
+
+// Regroupe des éléments ({ moment, … }) par section, dans l'ordre des MOMENTS.
+export function groupByMoment(items) {
+  const groups = new Map();
+  for (const item of items) {
+    const info = momentInfo(item.moment);
+    if (!groups.has(info.id)) groups.set(info.id, { ...info, items: [] });
+    groups.get(info.id).items.push(item);
+  }
+  return [...groups.values()].sort((a, b) => momentIndex(a.id) - momentIndex(b.id));
+}
 
 export const DEFAULT_TASKS = [
   { title: 'Me laver / prendre ma douche', icon: 'shower' },
@@ -33,8 +66,10 @@ export function cleanTitle(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, TITLE_MAX_LENGTH);
 }
 
-export function makeTask({ title, icon = 'check', order = 0 }, now = new Date().toISOString()) {
-  return { id: createId(), title: cleanTitle(title), icon, active: true, order, createdAt: now, updatedAt: now };
+export function makeTask({ title, icon = 'check', moment, order = 0 }, now = new Date().toISOString()) {
+  const task = { id: createId(), title: cleanTitle(title), icon, active: true, order, createdAt: now, updatedAt: now };
+  if (moment) task.moment = moment;
+  return task;
 }
 
 export function makeDefaultTasks(now = new Date().toISOString()) {
@@ -42,7 +77,13 @@ export function makeDefaultTasks(now = new Date().toISOString()) {
 }
 
 export function sortTasks(tasks) {
-  return [...tasks].sort((a, b) => a.order - b.order);
+  return [...tasks].sort((a, b) => momentIndex(a.moment) - momentIndex(b.moment) || a.order - b.order);
+}
+
+// Trie par moment puis par ordre, et renumérote 0..n-1.
+// Les tâches dont l'ordre ne change pas gardent le même objet.
+export function arrangeTasks(tasks) {
+  return sortTasks(tasks).map((task, i) => (task.order === i ? task : { ...task, order: i }));
 }
 
 export function activeTasks(tasks) {
@@ -59,6 +100,7 @@ export function syncDay(day, tasks) {
       taskId: task.id,
       title: task.title,
       icon: task.icon,
+      moment: task.moment,
       done: prev ? prev.done : false,
       doneAt: prev ? prev.doneAt : null,
     };
@@ -75,7 +117,7 @@ export function sameItems(a, b) {
   return a.items.every((item, i) => {
     const other = b.items[i];
     return item.taskId === other.taskId && item.title === other.title
-      && item.icon === other.icon && item.done === other.done;
+      && item.icon === other.icon && item.moment === other.moment && item.done === other.done;
   });
 }
 
@@ -115,21 +157,20 @@ export function encouragement({ done, total, remaining, complete }) {
   return 'Belle avancée. Continue à ton rythme.';
 }
 
-// Renumérote les tâches 0..n-1 dans leur ordre actuel.
-export function normalizeOrder(tasks) {
-  return sortTasks(tasks).map((task, i) => (task.order === i ? task : { ...task, order: i }));
-}
-
-// Déplace une tâche de `delta` positions (‑1 = monter, +1 = descendre).
+// Déplace une tâche de `delta` positions (‑1 = monter, +1 = descendre)
+// à l'intérieur de son moment.
 export function moveTask(tasks, taskId, delta) {
-  const sorted = normalizeOrder(tasks);
-  const from = sorted.findIndex((t) => t.id === taskId);
-  const to = from + delta;
-  if (from < 0 || to < 0 || to >= sorted.length) return sorted;
-  const next = [...sorted];
-  const [moved] = next.splice(from, 1);
-  next.splice(to, 0, moved);
-  return next.map((task, i) => (task.order === i ? task : { ...task, order: i }));
+  const sorted = arrangeTasks(tasks);
+  const task = sorted.find((t) => t.id === taskId);
+  if (!task) return sorted;
+  const group = sorted.filter((t) => t.moment === task.moment);
+  const other = group[group.indexOf(task) + delta];
+  if (!other) return sorted;
+  return arrangeTasks(sorted.map((t) => {
+    if (t === task) return { ...t, order: other.order };
+    if (t === other) return { ...t, order: task.order };
+    return t;
+  }));
 }
 
 export function totalDone(days) {
@@ -143,8 +184,8 @@ export function totalDone(days) {
 export const EXPORT_FORMAT = 'routine-tdah';
 export const EXPORT_VERSION = 1;
 
-export function buildExport({ tasks, days, settings }, now = new Date().toISOString()) {
-  return { format: EXPORT_FORMAT, version: EXPORT_VERSION, exportedAt: now, tasks, days, settings };
+export function buildExport({ tasks, days, settings, migrations = [] }, now = new Date().toISOString()) {
+  return { format: EXPORT_FORMAT, version: EXPORT_VERSION, exportedAt: now, tasks, days, settings, migrations };
 }
 
 // Valide et nettoie un fichier importé. Lève une erreur lisible sinon.
@@ -156,12 +197,15 @@ export function sanitizeImport(data) {
   const now = new Date().toISOString();
   const str = (v, fallback = '') => (typeof v === 'string' ? v : fallback);
 
-  const tasks = normalizeOrder(data.tasks.map((t, i) => {
+  const moment = (v) => (typeof v === 'string' && v ? { moment: v } : {});
+
+  const tasks = arrangeTasks(data.tasks.map((t, i) => {
     if (!t || typeof t.id !== 'string' || !cleanTitle(t.title)) fail();
     return {
       id: t.id,
       title: cleanTitle(t.title),
       icon: str(t.icon, 'check'),
+      ...moment(t.moment),
       active: t.active !== false,
       order: Number.isFinite(t.order) ? t.order : i,
       createdAt: str(t.createdAt, now),
@@ -182,6 +226,7 @@ export function sanitizeImport(data) {
           taskId: item.taskId,
           title: cleanTitle(item.title) || 'Tâche',
           icon: str(item.icon, 'check'),
+          ...moment(item.moment),
           done: item.done === true,
           doneAt: item.done === true ? str(item.doneAt, null) : null,
         };
@@ -190,5 +235,6 @@ export function sanitizeImport(data) {
   });
 
   const settings = { name: cleanTitle(data.settings?.name ?? '').slice(0, 40) };
-  return { tasks, days, settings };
+  const migrations = Array.isArray(data.migrations) ? data.migrations.filter((m) => typeof m === 'string') : [];
+  return { tasks, days, settings, migrations };
 }

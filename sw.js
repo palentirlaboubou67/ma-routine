@@ -3,7 +3,7 @@
 // version la plus récente est servie quand elle est disponible, sinon la copie
 // en cache.
 
-const CACHE = 'ma-routine-v1';
+const CACHE = 'ma-routine-v2';
 const SHELL = [
   './',
   './index.html',
@@ -15,6 +15,7 @@ const SHELL = [
   './src/main.js',
   './src/date.js',
   './src/model.js',
+  './src/migrations.js',
   './src/storage.js',
   './src/store.js',
   './src/ui/app.js',

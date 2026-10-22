@@ -1,8 +1,8 @@
 // Couche de stockage. Toute l'application passe par un « dépôt » qui expose
 // trois méthodes asynchrones :
 //
-//   loadAll()           → { initialized, tasks, days, settings }
-//   write(changes)      → enregistre { tasks?, deleteTaskIds?, days?, settings?, initialized? }
+//   loadAll()           → { initialized, migrations, tasks, days, settings }
+//   write(changes)      → enregistre { tasks?, deleteTaskIds?, days?, settings?, initialized?, migrations? }
 //                         en une seule transaction
 //   replaceAll(data)    → remplace toutes les données (import d'une sauvegarde)
 //
@@ -56,12 +56,13 @@ function runTransaction(db, mode, fn) {
   });
 }
 
-function applyChanges(stores, { tasks = [], deleteTaskIds = [], days = [], settings, initialized }) {
+function applyChanges(stores, { tasks = [], deleteTaskIds = [], days = [], settings, initialized, migrations }) {
   for (const task of tasks) stores.tasks.put(task);
   for (const id of deleteTaskIds) stores.tasks.delete(id);
   for (const day of days) stores.days.put(day);
   if (settings) stores.meta.put({ key: 'settings', value: settings });
   if (initialized) stores.meta.put({ key: 'initialized', value: true });
+  if (migrations) stores.meta.put({ key: 'migrations', value: migrations });
 }
 
 async function createIndexedDbRepository() {
@@ -78,17 +79,18 @@ async function createIndexedDbRepository() {
       const metaMap = new Map(meta.map((m) => [m.key, m.value]));
       return {
         initialized: metaMap.get('initialized') === true,
+        migrations: metaMap.get('migrations') ?? [],
         tasks,
         days,
         settings: metaMap.get('settings') ?? {},
       };
     }),
     write: (changes) => runTransaction(db, 'readwrite', (s) => applyChanges(s, changes)),
-    replaceAll: ({ tasks, days, settings }) => runTransaction(db, 'readwrite', (s) => {
+    replaceAll: ({ tasks, days, settings, migrations }) => runTransaction(db, 'readwrite', (s) => {
       s.tasks.clear();
       s.days.clear();
       s.meta.clear();
-      applyChanges(s, { tasks, days, settings, initialized: true });
+      applyChanges(s, { tasks, days, settings, migrations, initialized: true });
     }),
   };
 }
@@ -97,12 +99,14 @@ async function createIndexedDbRepository() {
 function createSimpleRepository(kind, persistSnapshot, initial) {
   const data = {
     initialized: initial?.initialized === true,
+    migrations: initial?.migrations ?? [],
     tasks: new Map((initial?.tasks ?? []).map((t) => [t.id, t])),
     days: new Map((initial?.days ?? []).map((d) => [d.date, d])),
     settings: initial?.settings ?? {},
   };
   const snapshot = () => ({
     initialized: data.initialized,
+    migrations: data.migrations,
     tasks: [...data.tasks.values()],
     days: [...data.days.values()],
     settings: data.settings,
@@ -112,18 +116,20 @@ function createSimpleRepository(kind, persistSnapshot, initial) {
   return {
     kind,
     loadAll: async () => clone(snapshot()),
-    write: async ({ tasks = [], deleteTaskIds = [], days = [], settings, initialized }) => {
+    write: async ({ tasks = [], deleteTaskIds = [], days = [], settings, initialized, migrations }) => {
       for (const task of tasks) data.tasks.set(task.id, clone(task));
       for (const id of deleteTaskIds) data.tasks.delete(id);
       for (const day of days) data.days.set(day.date, clone(day));
       if (settings) data.settings = clone(settings);
       if (initialized) data.initialized = true;
+      if (migrations) data.migrations = [...migrations];
       persistSnapshot(snapshot());
     },
-    replaceAll: async ({ tasks, days, settings }) => {
+    replaceAll: async ({ tasks, days, settings, migrations = [] }) => {
       data.tasks = new Map(tasks.map((t) => [t.id, clone(t)]));
       data.days = new Map(days.map((d) => [d.date, clone(d)]));
       data.settings = clone(settings);
+      data.migrations = [...migrations];
       data.initialized = true;
       persistSnapshot(snapshot());
     },

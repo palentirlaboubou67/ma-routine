@@ -18,8 +18,10 @@ const PATHS = {
   heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
   moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+  broom: '<path d="m16 22-1-4"/><path d="M19 14a1 1 0 0 0 1-1v-1a2 2 0 0 0-2-2h-3a1 1 0 0 1-1-1V4a2 2 0 0 0-4 0v5a1 1 0 0 1-1 1H6a2 2 0 0 0-2 2v1a1 1 0 0 0 1 1"/><path d="M5 14h14l1.97 6.77A1 1 0 0 1 20 22H4a1 1 0 0 1-.97-1.23z"/><path d="m8 22 1-4"/>',
   star: '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>',
   // Icônes d'interface
+  sunrise: '<path d="M12 2v8"/><path d="m4.93 10.93 1.41 1.41"/><path d="M2 18h2"/><path d="M20 18h2"/><path d="m19.07 10.93-1.41 1.41"/><path d="M22 22H2"/><path d="m8 6 4-4 4 4"/><path d="M16 18a4 4 0 0 0-8 0"/>',
   calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   settings: '<path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
@@ -38,7 +40,7 @@ export const TASK_ICONS = [
   ['check', 'Coche'], ['shower', 'Douche'], ['tooth', 'Dents'], ['bed', 'Lit'],
   ['dishes', 'Vaisselle'], ['meal', 'Repas'], ['apple', 'Fruit'], ['sport', 'Sport'],
   ['water', 'Eau'], ['pill', 'Médicament'], ['book', 'Lecture'], ['shirt', 'Linge'],
-  ['bag', 'Courses'], ['leaf', 'Plante'], ['heart', 'Cœur'], ['moon', 'Nuit'],
+  ['bag', 'Courses'], ['broom', 'Ménage'], ['leaf', 'Plante'], ['heart', 'Cœur'], ['moon', 'Nuit'],
   ['sun', 'Soleil'], ['star', 'Étoile'],
 ];
 

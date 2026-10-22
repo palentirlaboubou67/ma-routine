@@ -1,7 +1,7 @@
 // Écran « Aujourd'hui » : date, progression et checklist du jour.
 
 import { formatLong, greetingFor } from '../date.js';
-import { encouragement, progressOf } from '../model.js';
+import { encouragement, groupByMoment, progressOf } from '../model.js';
 import { h, reconcile, replayClass, tweenNumber } from './dom.js';
 import { celebrate } from './feedback.js';
 import { icon } from './icons.js';
@@ -39,7 +39,8 @@ export function createTodayView(store, { openSettings }) {
     messageEl,
   );
 
-  const listEl = h('ul', { class: 'tasks', 'aria-label': 'Tâches du jour' });
+  // Une section par moment de la journée (Matin, Midi, Soir…).
+  const sectionsEl = h('div', { class: 'moments' });
   const emptyEl = h('div', { class: 'empty card', hidden: true },
     icon('plus', { size: 28, className: 'empty-icon' }),
     h('p', { class: 'empty-title' }, 'Aucune habitude active'),
@@ -55,7 +56,7 @@ export function createTodayView(store, { openSettings }) {
       }, icon('settings')),
     ),
     progressCard,
-    listEl,
+    sectionsEl,
     emptyEl,
   );
 
@@ -77,6 +78,27 @@ export function createTodayView(store, { openSettings }) {
     const row = h('li', { class: 'task' }, button);
     row._refs = { iconSlot, titleEl, button };
     return row;
+  }
+
+  function createSection(group) {
+    const countEl = h('span', { class: 'moment-count' });
+    const list = h('ul', { class: 'tasks', 'aria-label': group.label });
+    const section = h('section', { class: 'moment' },
+      h('h2', { class: 'moment-title' },
+        icon(group.icon, { size: 18, className: 'moment-icon' }),
+        h('span', { class: 'moment-label' }, group.label),
+        countEl),
+      list);
+    section._refs = { countEl, list };
+    return section;
+  }
+
+  function updateSection(section, group, nextTaskId) {
+    const { countEl, list } = section._refs;
+    const done = group.items.filter((item) => item.done).length;
+    countEl.textContent = `${done}/${group.items.length}`;
+    section.classList.toggle('is-complete', done === group.items.length);
+    reconcile(list, group.items, (item) => item.taskId, createRow, (row, item) => updateRow(row, item, nextTaskId));
   }
 
   function updateRow(row, item, nextTaskId) {
@@ -124,11 +146,12 @@ export function createTodayView(store, { openSettings }) {
     const nextItem = items.find((item) => !item.done);
     if (lastDate !== state.today) {
       // Nouvelle journée (ou premier affichage) : on repart sans animation.
-      listEl.replaceChildren();
+      sectionsEl.replaceChildren();
       wasComplete = progress.complete;
     }
-    reconcile(listEl, items, (item) => item.taskId, createRow, (row, item) => updateRow(row, item, nextItem?.taskId));
-    listEl.hidden = items.length === 0;
+    reconcile(sectionsEl, groupByMoment(items), (group) => group.id, createSection,
+      (section, group) => updateSection(section, group, nextItem?.taskId));
+    sectionsEl.hidden = items.length === 0;
     emptyEl.hidden = items.length > 0;
 
     if (!entering && lastDate === state.today && progress.complete && !wasComplete) celebrate(progressCard);

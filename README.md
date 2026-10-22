@@ -55,7 +55,8 @@ restée ouverte ou non. Les journées passées ne sont jamais effacées ni modif
 ```
 index.html, styles.css     page et design (variables de couleur en haut du CSS)
 src/date.js                dates en heure locale
-src/model.js               logique pure : tâches par défaut, progression, journées
+src/model.js               logique pure : tâches par défaut, moments, progression, journées
+src/migrations.js          évolutions de la routine appliquées une fois aux données existantes
 src/storage.js             dépôt IndexedDB / localStorage / mémoire (interface unique)
 src/store.js               état de l'app + actions + changement de jour
 src/ui/*.js                écrans (today, history, settings), icônes, dialogues

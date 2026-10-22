@@ -5,6 +5,7 @@ import { addDays, dateKey, formatPastDay, isDateKey, msUntilNextDay } from '../s
 import {
   buildExport, createDay, makeDefaultTasks, moveTask, progressOf, sanitizeImport, syncDay, toggleItem,
 } from '../src/model.js';
+import { MIGRATIONS, runMigrations } from '../src/migrations.js';
 import { createMemoryRepository } from '../src/storage.js';
 import { createStore } from '../src/store.js';
 
@@ -125,11 +126,12 @@ test('premier lancement : liste par défaut et journée créée', async () => {
   const store = createStore(repo, { now: c.now });
   await store.init();
   const s = store.getState();
-  equal(s.tasks.length, 8);
+  equal(s.tasks.length, 14);
   equal(s.today, '2026-10-21');
-  equal(s.days.get('2026-10-21').items.length, 8);
+  equal(s.days.get('2026-10-21').items.length, 14);
   const saved = await repo.loadAll();
-  assert(saved.initialized && saved.tasks.length === 8 && saved.days.length === 1, 'tout est enregistré');
+  assert(saved.initialized && saved.tasks.length === 14 && saved.days.length === 1, 'tout est enregistré');
+  equal(saved.migrations, MIGRATIONS.map((m) => m.id));
 });
 
 test('les tâches cochées survivent à un redémarrage', async () => {
@@ -194,30 +196,33 @@ test('modifier la liste ne touche pas l’historique', async () => {
   const store = createStore(repo, { now: c.now });
   await store.init();
   const tasks = store.getState().tasks;
-  store.toggle(tasks[1].id);
+  const [douche, dents] = tasks;
+  const sport = tasks.find((t) => t.title === 'Faire mon sport de la journée');
+  store.toggle(dents.id);
   c.set('2026-10-22T10:00:00');
   store.checkDayChange();
 
-  store.renameTask(tasks[1].id, 'Brossage des dents');
-  store.setTaskActive(tasks[6].id, false);
-  store.deleteTask(tasks[0].id);
-  const added = store.addTask({ title: '  Boire   un verre d’eau ', icon: 'water' });
+  store.renameTask(dents.id, 'Brossage des dents');
+  store.setTaskActive(sport.id, false);
+  store.deleteTask(douche.id);
+  const added = store.addTask({ title: '  Boire   un verre d’eau ', icon: 'water', moment: 'midi' });
   equal(added.title, 'Boire un verre d’eau');
 
   const s = store.getState();
   const past = s.days.get('2026-10-21');
-  equal(past.items.length, 8);
+  equal(past.items.length, 14);
   equal(past.items[1].title, 'Me brosser les dents');
   assert(past.items[1].done);
   const today = s.days.get('2026-10-22');
-  equal(today.items.length, 7, '8 − 1 supprimée − 1 en pause + 1 ajoutée');
+  equal(today.items.length, 13, '14 − 1 supprimée − 1 en pause + 1 ajoutée');
   equal(today.items[0].title, 'Brossage des dents');
-  equal(today.items[6].title, 'Boire un verre d’eau');
+  const midi = today.items.filter((i) => i.moment === 'midi');
+  equal(midi[midi.length - 1].title, 'Boire un verre d’eau', 'ajoutée à la fin de son moment');
 
   await new Promise((r) => setTimeout(r, 0));
   const reopened = createStore(repo, { now: c.now });
   await reopened.init();
-  equal(reopened.getState().tasks.length, 8, '7 restantes + 1 ajoutée');
+  equal(reopened.getState().tasks.length, 14, '13 restantes + 1 ajoutée');
   equal(reopened.getState().days.get('2026-10-21').items[1].title, 'Me brosser les dents');
 });
 
@@ -248,6 +253,69 @@ test('export puis import', async () => {
   const s = target.getState();
   equal(s.settings.name, 'Sam');
   equal(progressOf(s.days.get('2026-10-21')).done, 1);
+});
+
+// ----- Moments et migration des données existantes -----
+
+// Données telles qu'enregistrées par la première version (sans moments).
+function legacyData() {
+  const tasks = makeDefaultTasks('2026-10-20T08:00:00.000Z').map(({ moment, ...t }) => t);
+  tasks.push({ ...tasks[0], id: 'perso', title: 'Prendre mes médicaments', icon: 'pill', order: 8 });
+  const strip = (day) => ({ ...day, items: day.items.map(({ moment, ...i }) => i) });
+  const past = toggleItem(createDay('2026-10-21', tasks), tasks[1].id);
+  const today = toggleItem(createDay('2026-10-22', tasks), tasks[3].id);
+  return { initialized: true, migrations: [], tasks, days: [strip(past), strip(today)], settings: {} };
+}
+
+test('migration : sections, nouvelles activités, rien de perdu', async () => {
+  const legacy = legacyData();
+  const repo = createMemoryRepository(legacy);
+  const c = clock('2026-10-22T09:00:00');
+  const store = createStore(repo, { now: c.now });
+  await store.init();
+  const s = store.getState();
+  const titles = (moment) => s.tasks.filter((t) => t.moment === moment).map((t) => t.title);
+  equal(titles('matin'), ['Me laver / prendre ma douche', 'Me brosser les dents', 'Faire mon lit',
+    'Pompes : 5 répétitions × 3 séries', 'Abdos : 100', 'Squats : 20']);
+  equal(titles('midi'), ['Manger un repas', 'Manger au moins un fruit ou un légume', 'Me brosser les dents',
+    'Faire la vaisselle — première session', 'Faire le ménage']);
+  equal(titles('soir'), ['Faire mon sport de la journée', 'Faire la vaisselle — deuxième session',
+    'Me brosser les dents', 'Prendre mes médicaments']);
+  assert(s.tasks.find((t) => t.title === 'Me brosser les dents' && t.moment === 'matin').id === legacy.tasks[1].id,
+    'la brique existante devient celle du matin');
+  equal(s.tasks.filter((t) => t.title === 'Me brosser les dents').length, 3);
+
+  const today = s.days.get('2026-10-22');
+  equal(progressOf(today), { done: 1, total: 15, remaining: 14, percent: 7, complete: false });
+  assert(today.items.find((i) => i.taskId === legacy.tasks[3].id).done, 'la case cochée du jour est conservée');
+  equal(s.days.get('2026-10-21').items.length, 9, 'le passé ne change pas');
+
+  // Redémarrage : pas de doublons.
+  await new Promise((r) => setTimeout(r, 0));
+  const again = createStore(repo, { now: c.now });
+  await again.init();
+  equal(again.getState().tasks.length, 15);
+});
+
+test('migration rejouée sur une sauvegarde déjà migrée : pas de doublons', () => {
+  const once = runMigrations(makeDefaultTasks(), []);
+  const twice = runMigrations(once.tasks, []);
+  equal(twice.tasks.length, once.tasks.length);
+  assert(!runMigrations(once.tasks, once.applied).changed);
+});
+
+test('réordonner reste dans le même moment', async () => {
+  const store = createStore(createMemoryRepository(), { now: clock('2026-10-22T09:00:00').now });
+  await store.init();
+  const before = store.getState().tasks;
+  const lastMatin = before.filter((t) => t.moment === 'matin').at(-1);
+  store.moveTask(lastMatin.id, 1);
+  equal(store.getState().tasks.map((t) => t.id), before.map((t) => t.id), 'ne passe pas au midi');
+  store.moveTask(lastMatin.id, -1);
+  const matin = store.getState().tasks.filter((t) => t.moment === 'matin');
+  equal(matin.at(-2).id, lastMatin.id);
+  store.setTaskMoment(lastMatin.id, 'soir');
+  equal(store.getState().tasks.at(-1).id, lastMatin.id, 'changer de moment place la tâche à la fin');
 });
 
 // ----- Lancement -----

@@ -2,9 +2,10 @@
 // (l'interface réagit immédiatement) puis enregistre la modification.
 
 import { dateKey } from './date.js';
+import { runMigrations } from './migrations.js';
 import {
-  buildExport, cleanTitle, createDay, makeDefaultTasks, makeTask, moveTask as moveInList,
-  normalizeOrder, sameItems, sanitizeImport, sortTasks, syncDay, toggleItem,
+  arrangeTasks, buildExport, cleanTitle, createDay, DEFAULT_MOMENT, makeDefaultTasks, makeTask,
+  moveTask as moveInList, sameItems, sanitizeImport, syncDay, toggleItem,
 } from './model.js';
 
 const DEFAULT_SETTINGS = { name: '' };
@@ -14,6 +15,7 @@ export function createStore(repo, { now = () => new Date() } = {}) {
     tasks: [],
     days: new Map(),
     settings: { ...DEFAULT_SETTINGS },
+    migrations: [],
     today: dateKey(now()),
     storageKind: repo.kind,
     saveError: false,
@@ -41,12 +43,20 @@ export function createStore(repo, { now = () => new Date() } = {}) {
 
   // Construit l'état à partir des données brutes du stockage.
   async function hydrate(data) {
-    let tasks = normalizeOrder(data.tasks);
+    const stamp = now().toISOString();
+    let tasks = arrangeTasks(data.tasks);
     const changes = { days: [] };
     if (!data.initialized) {
-      tasks = makeDefaultTasks();
+      tasks = makeDefaultTasks(stamp);
       changes.tasks = tasks;
       changes.initialized = true;
+    }
+    const migrated = runMigrations(tasks, data.migrations ?? [], stamp);
+    if (migrated.changed) {
+      const before = new Map(tasks.map((t) => [t.id, t]));
+      changes.tasks = migrated.tasks.filter((t) => changes.initialized || before.get(t.id) !== t);
+      changes.migrations = migrated.applied;
+      tasks = migrated.tasks;
     }
     const days = new Map(data.days.map((d) => [d.date, d]));
     const today = dateKey(now());
@@ -55,7 +65,9 @@ export function createStore(repo, { now = () => new Date() } = {}) {
     days.set(today, day);
     if (!existing || !sameItems(existing, day)) changes.days.push(day);
     if (changes.tasks || changes.days.length) await repo.write(changes);
-    setState({ tasks, days, today, settings: { ...DEFAULT_SETTINGS, ...data.settings } });
+    setState({
+      tasks, days, today, migrations: migrated.applied, settings: { ...DEFAULT_SETTINGS, ...data.settings },
+    });
   }
 
   async function init() {
@@ -95,34 +107,44 @@ export function createStore(repo, { now = () => new Date() } = {}) {
   }
 
   // Applique une nouvelle liste de tâches et resynchronise la journée en cours.
-  function commitTasks(tasks, { changed = [], deleteTaskIds = [] } = {}) {
+  // Seules les tâches modifiées (nouvel objet) sont réenregistrées.
+  function commitTasks(tasks, { deleteTaskIds = [] } = {}) {
     checkDayChange();
-    const sorted = sortTasks(tasks);
-    const day = syncDay(todayRecord(), sorted);
+    const before = new Map(state.tasks.map((t) => [t.id, t]));
+    const arranged = arrangeTasks(tasks);
+    const changed = arranged.filter((t) => before.get(t.id) !== t);
+    const day = syncDay(todayRecord(), arranged);
     const days = new Map(state.days);
     days.set(day.date, day);
-    setState({ tasks: sorted, days });
+    setState({ tasks: arranged, days });
     save({ tasks: changed, deleteTaskIds, days: [day] });
   }
 
   function updateTask(taskId, patch) {
     const stamp = now().toISOString();
-    let changed = null;
+    let found = false;
     const tasks = state.tasks.map((t) => {
       if (t.id !== taskId) return t;
-      changed = { ...t, ...patch, updatedAt: stamp };
-      return changed;
+      found = true;
+      return { ...t, ...patch, updatedAt: stamp };
     });
-    if (changed) commitTasks(tasks, { changed: [changed] });
+    if (found) commitTasks(tasks);
   }
 
-  function addTask({ title, icon }) {
+  // Les nouvelles tâches (ou celles qui changent de moment) vont à la fin du moment.
+  const END = Number.MAX_SAFE_INTEGER;
+
+  function addTask({ title, icon, moment = DEFAULT_MOMENT }) {
     const clean = cleanTitle(title);
     if (!clean) return null;
-    const order = state.tasks.reduce((max, t) => Math.max(max, t.order), -1) + 1;
-    const task = makeTask({ title: clean, icon, order }, now().toISOString());
-    commitTasks([...state.tasks, task], { changed: [task] });
-    return task;
+    const task = makeTask({ title: clean, icon, moment, order: END }, now().toISOString());
+    commitTasks([...state.tasks, task]);
+    return state.tasks.find((t) => t.id === task.id);
+  }
+
+  function setTaskMoment(taskId, moment) {
+    const task = state.tasks.find((t) => t.id === taskId);
+    if (task && task.moment !== moment) updateTask(taskId, { moment, order: END });
   }
 
   function renameTask(taskId, title) {
@@ -141,19 +163,14 @@ export function createStore(repo, { now = () => new Date() } = {}) {
   }
 
   function moveTask(taskId, delta) {
-    const before = new Map(state.tasks.map((t) => [t.id, t.order]));
     const tasks = moveInList(state.tasks, taskId, delta);
-    const changed = tasks.filter((t) => before.get(t.id) !== t.order);
-    if (changed.length) commitTasks(tasks, { changed });
+    if (tasks.some((t, i) => t !== state.tasks[i])) commitTasks(tasks);
   }
 
   function deleteTask(taskId) {
     const remaining = state.tasks.filter((t) => t.id !== taskId);
     if (remaining.length === state.tasks.length) return;
-    const tasks = normalizeOrder(remaining);
-    const before = new Map(state.tasks.map((t) => [t.id, t.order]));
-    const changed = tasks.filter((t) => before.get(t.id) !== t.order);
-    commitTasks(tasks, { changed, deleteTaskIds: [taskId] });
+    commitTasks(remaining, { deleteTaskIds: [taskId] });
   }
 
   function setName(name) {
@@ -165,9 +182,10 @@ export function createStore(repo, { now = () => new Date() } = {}) {
 
   function exportData() {
     return buildExport({
-      tasks: sortTasks(state.tasks),
+      tasks: state.tasks,
       days: [...state.days.values()].sort((a, b) => a.date.localeCompare(b.date)),
       settings: state.settings,
+      migrations: state.migrations,
     }, now().toISOString());
   }
 
@@ -191,6 +209,7 @@ export function createStore(repo, { now = () => new Date() } = {}) {
     renameTask,
     setTaskIcon,
     setTaskActive,
+    setTaskMoment,
     moveTask,
     deleteTask,
     setName,

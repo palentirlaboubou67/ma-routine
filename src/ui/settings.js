@@ -1,7 +1,7 @@
 // Écran « Réglages » : gérer ses habitudes, son prénom et ses données.
 
 import { dateKey } from '../date.js';
-import { TITLE_MAX_LENGTH } from '../model.js';
+import { DEFAULT_MOMENT, groupByMoment, MOMENTS, TITLE_MAX_LENGTH } from '../model.js';
 import { h, reconcile } from './dom.js';
 import { confirmDialog, pickIcon, toast } from './feedback.js';
 import { icon } from './icons.js';
@@ -23,6 +23,11 @@ function titleField(props) {
   return field;
 }
 
+function momentSelect(props) {
+  return h('select', { class: 'moment-select', ...props },
+    MOMENTS.map((m) => h('option', { value: m.id }, m.label)));
+}
+
 const STORAGE_NOTES = {
   indexeddb: 'Tout est enregistré automatiquement sur cet appareil, à chaque modification.',
   localstorage: 'Tout est enregistré automatiquement sur cet appareil (stockage simplifié du navigateur).',
@@ -31,7 +36,8 @@ const STORAGE_NOTES = {
 
 export function createSettingsView(store, { onBack }) {
   // ----- Liste des habitudes -----
-  const listEl = h('ul', { class: 'habits', 'aria-label': 'Mes habitudes' });
+  // Une liste par moment de la journée.
+  const listEl = h('div', { class: 'habit-groups' });
   const emptyEl = h('p', { class: 'habits-empty', hidden: true }, 'Ta liste est vide. Ajoute ta première habitude ci-dessous.');
 
   function createRow(task) {
@@ -64,6 +70,13 @@ export function createSettingsView(store, { onBack }) {
         return;
       }
       store.renameTask(id, input.value);
+    });
+
+    const moment = momentSelect({ 'aria-label': 'Moment de la journée' });
+    moment.addEventListener('change', () => {
+      store.setTaskMoment(id, moment.value);
+      // La tâche a changé de section : on garde le focus sur son sélecteur.
+      listEl.querySelector(`[data-key="${id}"] .moment-select`)?.focus();
     });
 
     const toggle = h('input', { type: 'checkbox', role: 'switch', class: 'switch-input' });
@@ -100,28 +113,40 @@ export function createSettingsView(store, { onBack }) {
     const row = h('li', { class: 'card habit' },
       h('div', { class: 'habit-main' }, iconBtn, input),
       h('div', { class: 'habit-actions' },
-        h('label', { class: 'switch' }, toggle, h('span', { class: 'switch-track', 'aria-hidden': 'true' }), toggleLabel),
+        h('span', { class: 'habit-settings' },
+          h('label', { class: 'switch' }, toggle, h('span', { class: 'switch-track', 'aria-hidden': 'true' }), toggleLabel),
+          moment),
         h('span', { class: 'habit-buttons' }, upBtn, downBtn, deleteBtn),
       ),
     );
-    row._refs = { iconBtn, input, toggle, toggleLabel, upBtn, downBtn };
+    row._refs = { iconBtn, input, moment, toggle, toggleLabel, upBtn, downBtn };
     return row;
   }
 
   function updateRow(row, task, index, count) {
-    const { iconBtn, input, toggle, toggleLabel, upBtn, downBtn } = row._refs;
+    const { iconBtn, input, moment, toggle, toggleLabel, upBtn, downBtn } = row._refs;
     if (row._icon !== task.icon) {
       iconBtn.replaceChildren(icon(task.icon));
       row._icon = task.icon;
     }
     if (document.activeElement !== input && input.value !== task.title) input.value = task.title;
     autoSize(input);
+    moment.value = task.moment ?? DEFAULT_MOMENT;
     toggle.checked = task.active;
     toggle.setAttribute('aria-label', `${task.title} : ${task.active ? 'active' : 'en pause'}`);
     toggleLabel.textContent = task.active ? 'Active' : 'En pause';
     row.classList.toggle('is-paused', !task.active);
     upBtn.disabled = index === 0;
     downBtn.disabled = index === count - 1;
+  }
+
+  function createGroup(group) {
+    const list = h('ul', { class: 'habits', 'aria-label': group.label });
+    const el = h('div', { class: 'habit-group' },
+      h('h3', { class: 'habit-group-title' }, icon(group.icon, { size: 16 }), group.label),
+      list);
+    el._list = list;
+    return el;
   }
 
   // ----- Ajout d'une habitude -----
@@ -140,6 +165,8 @@ export function createSettingsView(store, { onBack }) {
   const newInput = titleField({
     class: 'habit-input', placeholder: 'Ex. Boire un grand verre d’eau', 'aria-label': 'Nom de la nouvelle habitude',
   });
+  const newMoment = momentSelect({ 'aria-label': 'Moment de la nouvelle habitude' });
+  newMoment.value = DEFAULT_MOMENT;
   const addBtn = h('button', { class: 'btn btn-primary', type: 'submit', disabled: true }, icon('plus', { size: 18 }), 'Ajouter');
   newInput.addEventListener('input', () => { addBtn.disabled = !newInput.value.trim(); });
   newInput.addEventListener('keydown', (e) => {
@@ -150,11 +177,11 @@ export function createSettingsView(store, { onBack }) {
   });
   const addForm = h('form', { class: 'card add-form' },
     h('div', { class: 'habit-main' }, newIconBtn, newInput),
-    addBtn,
+    h('div', { class: 'add-options' }, newMoment, addBtn),
   );
   addForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const task = store.addTask({ title: newInput.value, icon: newIcon });
+    const task = store.addTask({ title: newInput.value, icon: newIcon, moment: newMoment.value });
     if (!task) return;
     newInput.value = '';
     autoSize(newInput);
@@ -245,7 +272,10 @@ export function createSettingsView(store, { onBack }) {
 
   function update(state) {
     const tasks = state.tasks;
-    reconcile(listEl, tasks, (t) => t.id, createRow, (row, task) => updateRow(row, task, tasks.indexOf(task), tasks.length));
+    reconcile(listEl, groupByMoment(tasks), (group) => group.id, createGroup, (groupEl, group) => {
+      reconcile(groupEl._list, group.items, (t) => t.id, createRow,
+        (row, task) => updateRow(row, task, group.items.indexOf(task), group.items.length));
+    });
     emptyEl.hidden = tasks.length > 0;
     listEl.hidden = tasks.length === 0;
     if (document.activeElement !== nameInput) nameInput.value = state.settings.name;
